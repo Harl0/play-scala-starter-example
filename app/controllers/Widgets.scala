@@ -1,16 +1,60 @@
 package controllers
 
-import play.api.mvc.Controller
+import javax.inject.Inject
 
+import play.api.libs.json.Json
+import play.api.mvc.{Action, BodyParsers, Controller}
+import play.modules.reactivemongo.{MongoController, ReactiveMongoApi, ReactiveMongoComponents}
+import reactivemongo.bson.{BSONDocument, BSONObjectID}
+import repos.WidgetRepoImpl
+import scala.concurrent.ExecutionContext.Implicits.global
 /**
   * Created by jason on 12/05/17.
   */
-class Widgets extends Controller {
+class Widgets @Inject()(val reactiveMongoApi: ReactiveMongoApi) extends Controller
+  with MongoController with ReactiveMongoComponents {
+  import WidgetFields._
 
-  def index = TODO
-  def create = TODO
-  def read(id: String) = TODO
-  def update(id: String) = TODO
-  def delete(id: String) = TODO
+  def widgetRepo = new WidgetRepoImpl(reactiveMongoApi)
 
+  def index = Action.async { implicit request =>
+    widgetRepo.find().map(widgets => Ok(Json.toJson(widgets)))
+  }
+
+  def create = Action.async(BodyParsers.parse.json) { implicit request =>
+    val name = (request.body \ Name).as[String]
+    val description = (request.body \ Description).as[String]
+    val author = (request.body \ Author).as[String]
+    widgetRepo.save(BSONDocument(
+      Name -> name,
+      Description -> description,
+      Author -> author
+    )).map(result => Created)
+  }
+
+  def read(id: String) = Action.async { implicit request =>
+    widgetRepo.select(BSONDocument(Id -> BSONObjectID(id))).map(widget => Ok(Json.toJson(widget)))
+  }
+
+  def update(id: String) = Action.async(BodyParsers.parse.json) { implicit request =>
+    val name = (request.body \ Name).as[String]
+    val description = (request.body \ Description).as[String]
+    val author = (request.body \ Author).as[String]
+    widgetRepo.update(BSONDocument(Id -> BSONObjectID(id)),
+      BSONDocument("$set" -> BSONDocument(Name -> name, Description -> description, Author -> author)))
+      .map(result => Accepted)
+  }
+
+  def delete(id: String) = Action.async {
+    widgetRepo.remove(BSONDocument(Id -> BSONObjectID(id)))
+      .map(result => Accepted)
+  }
+
+  object WidgetFields {
+
+    val Id = "_id"
+    val Name ="name"
+    val Description = "description"
+    val Author = "author"
+  }
 }
